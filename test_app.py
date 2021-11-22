@@ -2,9 +2,10 @@
 # encoding: utf-8
 import json
 from unittest import mock
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
+from flask import request
 
-from app import app, HOST_URL
+from app import app
 from models import User, ReceiverUser, Success, ModelValidationError, ReceiverSendError
 
 USER = User(name='test', dob='2021-01-23')
@@ -12,7 +13,7 @@ RECEIVER_USER = ReceiverUser(user=USER, comment='test comment')
 
 
 @mock.patch('requests.post')
-def test_sender_success(mock_requests):
+def test_sender_success(mock_requests: Mock) -> None:
     """
     Test that a success message is returned when the user payload is valid
     And the subsequent call to the receiver is successful
@@ -24,25 +25,26 @@ def test_sender_success(mock_requests):
     mock_requests.return_value = mock_response
     # create a user payload
     # send request to the /sender api endpoint
-    resp = app.test_client().post(
-        '/sender',
-        data=USER.json(),
-        content_type='application/json',
-    )
-    # mock the subsequent call to the receiver
-    mock_requests.assert_called_with(
-        f'{HOST_URL}/receiver',
-        data=ReceiverUser(
-            user=USER,
-            comment=f"{USER.name} is a legend"
-        ).json(),
-    )
-    assert resp.status_code == 200
-    assert resp.get_data(as_text=True) == Success(success=True).json()
+    with app.test_request_context():
+        resp = app.test_client().post(
+            '/sender',
+            data=USER.json(),
+            content_type='application/json',
+        )
+        # mock the subsequent call to the receiver
+        mock_requests.assert_called_with(
+            f'{request.url_root}/receiver',
+            data=ReceiverUser(
+                user=USER,
+                comment=f"{USER.name} is a legend"
+            ).json(),
+        )
+        assert resp.status_code == 200
+        assert resp.get_data(as_text=True) == Success(success=True).json()
 
 
 @mock.patch('requests.post')
-def test_sender_validation_error(mock_requests):
+def test_sender_validation_error(mock_requests: Mock) -> None:
     """
     Test that a validation error is raised when the user payload is invalid
     """
@@ -61,32 +63,35 @@ def test_sender_validation_error(mock_requests):
 
 
 @mock.patch('requests.post')
-def test_sender_send_receive_failure(mock_requests):
+def test_sender_send_receive_failure(mock_requests: Mock) -> None:
     """
     Test that a failure message is returned when the receiver returns a failure
     """
     # return a magicMock to handle the response function calls
     mock_requests.return_value = MagicMock()
     # send request to the /sender api endpoint
-    resp = app.test_client().post(
-        '/sender',
-        data=USER.json(),
-        content_type='application/json',
-    )
-    # mock the subsequent call to the receiver
-    mock_requests.assert_called_with(
-        f'{HOST_URL}/receiver',
-        data=ReceiverUser(
-            user=USER,
-            comment=f"{USER.name} is a legend"
-        ).json(),
-    )
-    # The main request succeeds and propagates the failed response from the receiver
-    assert resp.status_code == 500
-    assert resp.get_data(as_text=True) == ReceiverSendError(description='Invalid status argument').json()
+    with app.test_request_context():
+        resp = app.test_client().post(
+            '/sender',
+            data=USER.json(),
+            content_type='application/json',
+        )
+        # mock the subsequent call to the receiver
+        mock_requests.assert_called_with(
+            f'{request.url_root}/receiver',
+            data=ReceiverUser(
+                user=USER,
+                comment=f"{USER.name} is a legend"
+            ).json(),
+        )
+        # The main request succeeds and propagates the failed response from the receiver
+        assert resp.status_code == 500
+        assert resp.get_data(as_text=True) == ReceiverSendError(
+            description='Invalid status argument'
+        ).json()
 
 
-def test_receiver_success():
+def test_receiver_success() -> None:
     """
     Test that a success message is returned when the user payload is valid
     """
@@ -100,7 +105,7 @@ def test_receiver_success():
     assert resp.get_data(as_text=True) == Success(success=True).json()
 
 
-def test_receiver_failure():
+def test_receiver_failure() -> None:
     """
     Test that a failure message is returned when the user payload is invalid
     """
